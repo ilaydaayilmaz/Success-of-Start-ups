@@ -1,0 +1,454 @@
+---
+title: "Project-ilayda-startup"
+author: "Ilayda Yilmaz"
+date: "03 06 2022"
+output: pdf_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(readr)
+library(glmulti)
+library(caret)
+library(ggplot2)
+library(readxl)
+library(pROC)
+library(performance)
+library(dplyr)
+```
+
+
+
+```{r}
+startup <- read.csv("startup.csv")
+str(startup)
+startup=startup[,-1]
+summary(startup)
+```
+
+
+response: Dependent variable
+
+
+```{r}
+#startup$Dependent <- as.factor(startup$Dependent)
+
+startup$Company_Location <- as.factor(startup$Company_Location)
+startup$Company_raising_fund <- as.factor(startup$Company_raising_fund)
+startup$Company_Industry_count <- as.factor(startup$Company_Industry_count)
+startup$Company_mobile_app <- as.factor(startup$Company_mobile_app)
+startup$Company_top_Angel_VC_funding <- as.factor(startup$Company_top_Angel_VC_funding)
+startup$Founders_top_company_experience <- as.factor(startup$Founders_top_company_experience)
+startup$Founders_previous_company_employee_count <- as.factor(startup$Founders_previous_company_employee_count)
+startup$Founders_startup_experience <- as.factor(startup$Founders_startup_experience)
+startup$Founders_big_5_experience <- as.factor(startup$Founders_big_5_experience)
+startup$Company_business_model <- as.factor(startup$Company_business_model)
+startup$Founders_experience <- as.factor(startup$Founders_experience)
+startup$Founders_global_exposure <- as.factor(startup$Founders_global_exposure)
+startup$Founders_Industry_exposure <- as.factor(startup$Founders_Industry_exposure)
+
+startup$Founder_education <- as.factor(startup$Founder_education)
+startup$Founder_university_quality <- as.factor(startup$Founder_university_quality)
+startup$Founders_profile_similarity <- as.factor(startup$Founders_profile_similarity)
+startup$Founders_publications <- as.factor(startup$Founders_publications)
+
+startup$Company_incubation_investor <- as.factor(startup$Company_incubation_investor)
+startup$Company_crowdsourcing <- as.factor(startup$Company_crowdsourcing)
+startup$Company_crowdfunding  <- as.factor(startup$Company_crowdfunding)
+startup$Company_big_data <- as.factor(startup$Company_big_data )
+startup$Company_Product_or_service   <- as.factor(startup$Company_Product_or_service )
+startup$Company_subscription_offering     <- as.factor(startup$Company_subscription_offering )
+startup$Founder_highest_degree_type       <- as.factor(startup$Founder_highest_degree_type )
+startup$Company_difficulty_obtaining_workforce <- as.factor(startup$Company_difficulty_obtaining_workforce)
+startup$Company_Founder_Patent <- as.factor(startup$Company_Founder_Patent)
+
+startup$Founders_Popularity <- as.factor(startup$Founders_Popularity)
+
+
+str(startup)
+```
+
+```{r}
+set.seed(2022)
+trainIndex <- createDataPartition(startup$Dependent, p = .75,  list = FALSE, times = 1)
+trainset <- startup[ trainIndex,]
+testset  <- startup[-trainIndex,]
+```
+
+```{r}
+ggplot(trainset) +
+  aes(x = Company_Location, fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+
+ggplot(trainset) +
+  aes(x = Founders_Industry_exposure , fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+
+ggplot(trainset) +
+  aes(x = Founders_Popularity , fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+
+ggplot(trainset,aes(x = Company_crowdfunding , fill = as.factor(Dependent)) ) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+
+ggplot(trainset) +
+  aes(x = Company_business_model , fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+
+ggplot(trainset) +
+  aes(x =  Company_mobile_app, fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+ggplot(trainset) +
+  aes(x =  Company_investor_count_seed   , fill = as.factor(Dependent)) +
+  geom_bar(position = "dodge") + scale_fill_discrete(name = "Dependent")
+
+```
+Plots:
+```{r}
+ggplot(trainset, aes(Company_senior_team_count, Dependent)) + geom_point() + geom_smooth()
+ggplot(trainset, aes(Company_analytics_score , Dependent)) + geom_point() + geom_smooth()
+
+ggplot(trainset, aes(Company_investor_count_seed , Dependent)) + geom_point() + geom_smooth()
+ggplot(trainset, aes(Founders_Domain_skills_score , Dependent)) + geom_point() + geom_smooth()
+
+ggplot(trainset, aes(Founders_Sales_skills_score, Dependent)) + geom_point() + geom_smooth()
+```
+
+
+
+Chi-square test for each categoric columns:
+
+```{r}
+categoricCols<-select_if(startup,is.factor)
+pval<-c()
+for(i in 1:ncol(categoricCols)){
+  pval[i]<-chisq.test(categoricCols[,i],startup$Dependent)$p.value
+}
+names(pval)<-names(categoricCols)
+names(pval[pval<0.05])
+```
+
+```{r}
+impCategoricCol<-names(pval[pval<0.05])
+```
+Correlation matrix for numeric columns:
+
+```{r}
+library(dplyr)
+numericCols<-select_if(startup,is.numeric)
+cors<-cor(numericCols)
+corrplot::corrplot(cors,tl.pos='n')
+```
+
+```{r}
+full.model <- glm(as.formula(paste(c("as.factor(Dependent)~",colnames(numericCols[2:length(numericCols)]),impCategoricCol[2:length(impCategoricCol)]),collapse = "+")),
+                  family = binomial, trainset)
+check_collinearity(full.model)
+```
+
+
+
+# QUESTION 1
+
+What are the variables that have a significant relationship with the company's success status?
+
+```{r,warning=FALSE}
+full.model <- glm(as.formula(paste(c("as.factor(Dependent)~",colnames(numericCols[2:length(numericCols)]),impCategoricCol[2:length(impCategoricCol)]),collapse = "+")),
+                  family = binomial, trainset)
+null.model <- glm(Dependent~1, family = binomial, trainset)
+# Forward model
+forward.model <- step(object = null.model, scope = list(upper = full.model), direction = "forward")
+# Both model
+both.model <- step(full.model, direction="both")
+```
+
+```{r}
+
+model <- caret::train(as.formula(paste(c("as.factor(Dependent)~",colnames(numericCols[2:length(numericCols)]),impCategoricCol[2:length(impCategoricCol)]),collapse = "+")),
+                      data = trainset, method="glmStepAIC", trControl=trainControl(method="cv",number=3),
+                      direction="forward", family=binomial,trace=0)
+summary(model)
+```
+
+```{r}
+model<-glm(as.formula(paste(c("Dependent~",colnames(numericCols[2:length(numericCols)]),impCategoricCol[2:length(impCategoricCol)]),
+                            collapse = "+")),trainset,family = binomial)
+model.without.interaction<-step(model,test="LRT")
+```
+
+
+
+```{r}
+acf(residuals(model.without.interaction, "deviance"))
+
+```
+
+```{r}
+cat("FORWARD MODEL: \n")
+summary(forward.model)
+cat("\n\n\n","BOTH MODEL: \n")
+summary(both.model)
+cat("\n\n\n","LRT MODEL: \n")
+summary(model.without.interaction)
+```
+Same.
+
+
+```{r}
+reducedmodeltest <- glm(Dependent~1,family = binomial, trainset)
+2*(logLik(model.without.interaction) - logLik(reducedmodeltest))
+cat("Chi-square",qchisq(0.1, 15, lower.tail = F))#critical value
+```
+Since, LR > critical value, we conclude that model is significant.
+
+
+
+Interaction: 
+```{r}
+model.with.interaction <- glm(Dependent ~
+                                Company_senior_team_count + Company_analytics_score +
+                                Company_business_model + Company_crowdfunding +
+                                Company_investor_count_seed + Founders_Domain_skills_score + 
+                                Company_mobile_app + Founders_Popularity + 
+                                Founders_Industry_exposure + Company_top_Angel_VC_funding + 
+                                Company_Location + Founders_Sales_skills_score + 
+                                Company_senior_team_count:Founders_Domain_skills_score + 
+                                Company_senior_team_count:Founders_Popularity + 
+                                Company_senior_team_count:Founders_Industry_exposure + 
+                                Company_senior_team_count:Founders_Sales_skills_score + 
+                                
+                                Company_analytics_score:Company_mobile_app +  
+                                
+                                Company_business_model:Company_top_Angel_VC_funding + 
+                                Company_investor_count_seed:Company_Location +
+                                Founders_Domain_skills_score:Founders_Industry_exposure +
+                                Founders_Popularity:Company_top_Angel_VC_funding +
+                                
+                                Company_top_Angel_VC_funding:Company_Location +
+                                Company_top_Angel_VC_funding:Founders_Sales_skills_score +
+                                Company_Location:Founders_Sales_skills_score,
+                              family = binomial, trainset)
+summary(model.with.interaction)
+```
+
+```{r}
+significant.interaction.model<-glm(as.factor(Dependent) ~
+                                Company_senior_team_count + 
+                                Company_business_model + Company_crowdfunding + 
+                                Founders_Popularity + Company_top_Angel_VC_funding + 
+                                Company_Location + Founders_Sales_skills_score + 
+                                Company_senior_team_count:Founders_Popularity + 
+                                Founders_Popularity:Company_top_Angel_VC_funding ,
+                              family = binomial, trainset)
+summary(significant.interaction.model)
+```
+
+
+
+Test whether all interaction terms can be dropped from the regression model
+```{r}
+2*(logLik(model.with.interaction)-logLik(model.without.interaction))
+
+model.without.interaction$df.residual - model.with.interaction$df.residual
+
+qchisq(0.05, 6, lower.tail = F)
+```
+
+The test statistic is not more extreme than the critical value so we cannot reject the null hypothesis. We can drop all the interaction terms.
+
+
+
+Goodness of Fit Test
+
+```{r}
+library(ResourceSelection)
+
+hoslem.test(model.without.interaction$y, fitted(model.without.interaction), g=8)
+```
+Model is good fit.
+
+
+Accuracy Measures
+
+```{r,warning=FALSE}
+probs <- predict(model.without.interaction, trainset, type="response")
+roc <- roc(trainset$Dependent ~ probs, plot = TRUE, print.auc = TRUE, legacy.axes=T)
+
+coords(roc, "best", ret="threshold")
+predicted <- ifelse(probs > 0.2941247	, 1, 0)
+
+t <- table(predicted, actual=trainset$Dependent)
+t
+
+confusionMatrix(t, positive = "1")
+```
+
+```{r}
+probs <- predict(model.without.interaction, testset, type="response")
+roc <- roc(testset$Dependent ~ probs, plot = TRUE, print.auc = TRUE, legacy.axes=T)
+
+coords(roc, "best", ret="threshold")
+predicted <- ifelse(probs > 0.07624042		, 1, 0)
+
+t <- table(predicted, actual=testset$Dependent)
+t
+
+confusionMatrix(t, positive = "1")
+```
+
+
+
+# Question 2 
+According to different types of skill scores of founders, which type of skills are most related to whether start-ups are successful or not?
+
+```{r}
+skillScoreSet<-trainset[,c("Dependent","Founders_skills_score","Founders_Entrepreneurship_skills_score",
+                           "Founders_Operations_skills_score","Founders_Engineering_skills_score",
+                           "Founders_Marketing_skills_score","Founders_Leadership_skills_score",
+                           "Founders_Data_Science_skills_score","Founders_Business_Strategy_skills_score",
+                           "Founders_Product_Management_skills_score",
+                           "Founders_Sales_skills_score","Founders_Domain_skills_score")]
+
+str(skillScoreSet)
+```
+
+
+
+```{r}
+model.skill<- glm(Dependent ~. ,family = binomial, skillScoreSet)
+summary(model.skill)
+```
+
+
+```{r}
+full.model.skill <- glm(Dependent~., family = binomial, skillScoreSet)
+null.model.skill <- glm(Dependent~1, family = binomial, skillScoreSet)
+# Forward model
+forward.model.skill <- step(object = null.model.skill, scope = list(upper = full.model.skill), direction = "forward")
+# Both model
+both.model.skill <- step(full.model.skill, direction="both")
+```
+
+
+```{r}
+cat("FORWARD MODEL: \n")
+summary(forward.model.skill)
+cat("\n\n\n","BOTH MODEL: \n")
+summary(both.model.skill)
+```
+Founders_skills_score -	Overall skill score of founders -	Ordinal
+
+Founders_Domain_skills_score	- Domain knowledge score of founders -	Ordinal
+
+
+```{r}
+hoslem.test(both.model.skill$y, fitted(both.model.skill), g=8)
+```
+Model is good fit.
+
+
+# QUESTION 3
+Is there a significant relationship between it is funded by top Angel or VC funds whether the start-up is successful or not?
+
+Chi-Square Independence Test
+
+```{r}
+test <- chisq.test(table(trainset$Company_top_Angel_VC_funding, trainset$Dependent))
+test
+table(trainset$Company_top_Angel_VC_funding, trainset$Dependent)
+```
+
+
+p-value is less than 0.05, so we can reject the null hypothesis. 
+
+Since we reject the null hypothesis for the Chi Square test of independence, there is 
+
+a significant relationship between whether company has been funded by top Angel or VC funds,and a start-up is successful or not.
+
+
+
+Logistic Regression Diagnostics
+```{r}
+ei <- trainset$Dependent - model.without.interaction$fitted.values
+signei <- sign(ei)
+devi <- signei * sqrt(-2*(trainset$Dependent * log(model.without.interaction$fitted.values) + (1-trainset$Dependent)*log(1-model.without.interaction$fitted.values)))
+devi
+
+residuals(model.without.interaction, "deviance")
+
+
+trainset$pihat <- model.without.interaction$fitted.values
+trainset$devi <- residuals(model.without.interaction, "deviance")
+ggplot(trainset, aes(pihat, devi)) + geom_point() + geom_smooth(se=F)
+```
+
+ Normality
+ 
+```{r}
+qqnorm(devi)
+qqline(devi)
+
+
+library(nortest)
+ad.test(devi)
+
+```
+As we can see the p-value is less than 0.05. The deviance residuals are not from a normal distribution.     
+
+There is a serious problem about the normality of the deviance residuals.     
+
+
+Adequacy of the fit of the logistic regression model
+
+```{r}
+ri <- (trainset$Dependent - model.without.interaction$fitted.values)/sqrt(model.without.interaction$fitted.values* (1-model.without.interaction$fitted.values))
+ri
+
+residuals(model.without.interaction, "pearson")
+
+
+ri/sqrt(1-influence(model.without.interaction)$hat)
+
+rstandard(model.without.interaction, type="pearson")
+
+
+trainset$pihat <- model.without.interaction$fitted.values
+trainset$stpearson <- ri
+ggplot(trainset, aes(pihat, stpearson)) + geom_point() + geom_smooth(se=F)
+```
+
+
+The model seems to be a good fit.
+
+
+
+```{r}
+library(statmod)
+rs <- cbind( rD=resid(model.without.interaction), "r'D"=rstandard(model.without.interaction),
+             "r''"=rstudent(model.without.interaction), rQ=qresid(model.without.interaction))
+apply(abs(rs), 2, max) # The maximum absolute for each residual
+
+im <- influence.measures(model.without.interaction)
+colSums(im$is.inf)
+
+```
+So 10 points seem to be influential by cov.r.
+
+
+# Model Validation
+
+```{r}
+predicted.test <- predict(model.without.interaction, testset)
+predicted.train <- predict(model.without.interaction, trainset)
+rmse.test <- caret::RMSE(predicted.test, testset$Dependent)
+rmse.train <- caret::RMSE(predicted.train, trainset$Dependent)
+rmse.test
+rmse.train
+
+```
